@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\Comarch\\source\\repos\\RepoServiceGenerator\\RepoServiceGenerator.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\Comarch\\source\\repos\\RepoServiceGenerator\\RepoServiceGenerator.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\Comarch\\source\\repos\\RepoServiceGenerator\\RepoServiceGenerator.csproj",
+        "projectName": "RepoServiceGenerator",
+        "projectPath": "C:\\Users\\Comarch\\source\\repos\\RepoServiceGenerator\\RepoServiceGenerator.csproj",
+        "packagesPath": "C:\\Users\\Comarch\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\Comarch\\source\\repos\\RepoServiceGenerator\\obj\\",
+        "projectStyle": "PackageReference",
+        "skipContentFileWrite": true,
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\Comarch\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net472"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net472": {
+            "projectReferences": {}
+          }
+        }
+      },
+      "frameworks": {
+        "net472": {
+          "dependencies": {
+            "Microsoft.VSSDK.BuildTools": {
+              "target": "Package",
+              "version": "[16.10.1056, )"
+            },
+            "Microsoft.VisualStudio.SDK": {
+              "include": "Compile, Build, Native, ContentFiles, Analyzers, BuildTransitive",
+              "target": "Package",
+              "version": "[16.0.206, )"
+            }
+          }
+        }
+      },
+      "runtimes": {
+        "win": {
+          "#import": []
+        },
+        "win-x64": {
+          "#import": []
+        },
+        "win-x86": {
+          "#import": []
+        }
+      }
+    }
+  }
+}
