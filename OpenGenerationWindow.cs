@@ -3,10 +3,12 @@ using EnvDTE80;
 using Microsoft.VisualStudio.Shell;
 using Microsoft.VisualStudio.Shell.Interop;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Documents;
 using Task = System.Threading.Tasks.Task;
 
 namespace RepoServiceGenerator
@@ -94,16 +96,29 @@ namespace RepoServiceGenerator
         private void Execute(object sender, EventArgs e)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
-            //System.Windows.Window window = CreateGeneratorWindow();
-            //var wpfWindowControl = new GeneratorWindow(window);
-            //window.Content = wpfWindowControl;
-            //var result = window.ShowDialog();
+
+            ProjectItems mainItems = _dte.Solution.Projects.Item(1).ProjectItems;
+
+            var dbContextClass = FindDbContex(mainItems, "User");
+            var modelsFolder = FindModelsFolder(mainItems, "Models");
+            var models = GetModelsNamesFromFolder(modelsFolder);
+
+            System.Windows.Window window = CreateGeneratorWindow();
+
+            var wpfWindowControl = new GeneratorWindow(window);
+            wpfWindowControl.InitializeDbContextComboBoxWithItems(dbContextClass?.FullName);
+            wpfWindowControl.InitializeModelsComboBoxWithItems(models);
+
+            window.Content = wpfWindowControl;
+            var result = window.ShowDialog();
             //if (result == true)
             //{
-            CreateFolder("Services");
-            CreateFolder("Repositories");
-            CreateInterface("Service", "Services", "User");
-            CreateInterface("Repository", "Repositories", "User");
+            //CreateFolder("Services");
+            //CreateFolder("Repositories");
+            //CreateInterface("Service", "Services", "User");
+            //CreateInterface("Repository", "Repositories", "User");
+
+
             //var text = wpfWindowControl.ModelClass;
             //VsShellUtilities.ShowMessageBox(
             //    this.package,
@@ -205,6 +220,94 @@ namespace RepoServiceGenerator
                 editPoint.Insert($"using {us};\n");
             }
             editPoint.Insert("\n");
+        }
+
+        private CodeClass FindDbContex(ProjectItems items, string dbContextBaseClassName = "DbContext")
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            foreach (ProjectItem item in items)
+            {
+                if(item.FileCodeModel != null){
+                    foreach(CodeElement codeElement in item.FileCodeModel.CodeElements)
+                    {
+                        if(codeElement.Kind == vsCMElement.vsCMElementNamespace)
+                        {
+                            foreach(CodeElement classElement in codeElement.Children)
+                            {
+                                if(classElement.Kind == vsCMElement.vsCMElementClass && ((CodeClass)classElement).Bases.Count > 0)
+                                {
+                                    if(((CodeClass)classElement).Bases.Item(1).Name.ToLower().Equals(dbContextBaseClassName.ToLower()))
+                                    {
+                                        return (CodeClass)classElement;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    CodeClass codeClass = FindDbContex(item.ProjectItems, dbContextBaseClassName);
+                    if(codeClass != null)
+                    {
+                        return codeClass;
+                    }
+                }
+            }
+            return null;
+        }
+
+
+        private ProjectItem FindModelsFolder(ProjectItems items, string folderName)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            foreach (ProjectItem item in items)
+            {
+                if(item.Name.ToLower().Equals(folderName.ToLower()))
+                {
+                    return item;
+                }
+                else
+                {
+                    ProjectItem projectItem = FindModelsFolder(item.ProjectItems, folderName);
+                    if(projectItem != null)
+                    {
+                        return projectItem;
+                    }
+                }
+            }
+            return null;
+        }
+
+        private List<string> GetModelsNamesFromFolder(ProjectItem modelsFolder)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            List<string> models = new List<string>();
+
+            foreach(ProjectItem item in modelsFolder.ProjectItems)
+            {
+                if(item.FileCodeModel != null)
+                {
+                    foreach (CodeElement codeElement in item.FileCodeModel.CodeElements)
+                    {
+                        if (codeElement.Kind == vsCMElement.vsCMElementNamespace)
+                        {
+                            foreach (CodeElement classElement in codeElement.Children)
+                            {
+                                if (classElement.Kind == vsCMElement.vsCMElementClass)
+                                {
+                                    models.Add(((CodeClass)classElement).FullName);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return models;
         }
     }
 }

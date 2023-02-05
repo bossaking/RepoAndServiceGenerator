@@ -23,19 +23,40 @@ namespace RepoServiceGenerator
 
         public string ModelClass { get; set; }
 
-        private Window window;
+        private Window Window;
 
         public GeneratorWindow(Window window)
         {
             InitializeComponent();
-            this.window = window;
+            this.Window = window;
         }
 
         private void Button_Click(object sender, RoutedEventArgs e)
         {
-            ModelClass = ClassComboBox.Text;
-            window.DialogResult = true;
-            window.Close();
+            ModelClass = ModelsComboBox.Text;
+            Window.DialogResult = true;
+            Window.Close();
+        }
+
+        public void InitializeModelsComboBoxWithItems(List<string> Models)
+        {
+            foreach(string model in Models)
+            {
+                ModelsComboBox.Items.Add(new ComboBoxItem()
+                {
+                    Content = model
+                });
+            }
+            ModelsComboBox.SelectedIndex = 0;
+        }
+
+        public void InitializeDbContextComboBoxWithItems(string DbContextClassName)
+        {
+            DbContextComboBox.Items.Add(new ComboBoxItem()
+            {
+                Content = DbContextClassName,
+                IsSelected = true
+            });
         }
     }
 }
