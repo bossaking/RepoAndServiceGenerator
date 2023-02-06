@@ -50,13 +50,17 @@ namespace RepoServiceGenerator
             ModelsComboBox.SelectedIndex = 0;
         }
 
-        public void InitializeDbContextComboBoxWithItems(string DbContextClassName)
+        public void InitializeDbContextComboBoxWithItems(List<string> DbContextClassNames)
         {
-            DbContextComboBox.Items.Add(new ComboBoxItem()
+            foreach (string dbContextClassName in DbContextClassNames)
             {
-                Content = DbContextClassName,
-                IsSelected = true
-            });
+                DbContextComboBox.Items.Add(new ComboBoxItem()
+                {
+                    Content = dbContextClassName
+                });
+            }
+            DbContextComboBox.SelectedIndex = 0;
+
         }
     }
 }
