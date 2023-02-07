@@ -8,6 +8,7 @@ using System.ComponentModel.Design;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Controls;
 using System.Windows.Documents;
 using Task = System.Threading.Tasks.Task;
 
@@ -106,10 +107,15 @@ namespace RepoServiceGenerator
             System.Windows.Window window = CreateGeneratorWindow();
 
             var wpfWindowControl = new GeneratorWindow(window);
-            wpfWindowControl.InitializeDbContextComboBoxWithItems(dbContextClases);
             wpfWindowControl.InitializeModelsComboBoxWithItems(models);
+            wpfWindowControl.InitializeDbContextComboBoxWithItems(dbContextClases);
 
             window.Content = wpfWindowControl;
+
+
+            wpfWindowControl.DbContextComboBox.SelectionChanged += (sender1, e1) => SelectionChanged(wpfWindowControl, mainItems);
+            wpfWindowControl.ModelsComboBox.SelectionChanged += (sender1, e1) => SelectionChanged(wpfWindowControl, mainItems);
+
             var result = window.ShowDialog();
             if (result == true)
             {
@@ -126,49 +132,49 @@ namespace RepoServiceGenerator
 
                 string modelName = modelFullName.Split('.')[modelFullName.Split('.').Length - 1];
 
-                CreateInterface("Service", "Services", modelName);
-                CreateInterface("Repository", "Repositories", modelName);
+                CreateInterface("Service", "Services", modelName, wpfWindowControl);
+                CreateInterface("Repository", "Repositories", modelName, wpfWindowControl);
 
-                CreateRepositoryClass("Repository", "Repositories", modelFullName, dbContextFullPath, dbSetName);
-                CreateServiceClass("Service", "Services", modelFullName, dbContextFullPath, dbSetName);
+                CreateRepositoryClass("Repository", "Repositories", modelFullName, dbContextFullPath, dbSetName, wpfWindowControl);
+                CreateServiceClass("Service", "Services", modelFullName, dbContextFullPath, dbSetName, wpfWindowControl);
             }
-
-
-            //CreateClass("Service", "Services", "ConsoleApp3.Models.User", "ConsoleApp3.DAL.AppDbContext");
-            //CreateRepositoryClass("Repository", "Repositories", "ConsoleApp3.Models.User", "ConsoleApp3.DAL.AppDbContext", "Users");
-            //var text = wpfWindowControl.ModelClass;
-            //VsShellUtilities.ShowMessageBox(
-            //    this.package,
-            //    text,
-            //    "Lol",
-            //    OLEMSGICON.OLEMSGICON_INFO,
-            //    OLEMSGBUTTON.OLEMSGBUTTON_OK,
-            //    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_FIRST);
-            // }
-            //string message = string.Format(CultureInfo.CurrentCulture, "Inside {0}.MenuItemCallback()", this.GetType().FullName);
-            //string title = "OpenGenerationWindow";
-
-
-            //string fullPath = System.IO.Path.Combine(dTE2.Solution.Projects.Item(1).ProjectItems.Item(1).Properties.Item("FullPath").Value.ToString(), "User.cs");
-            //var folder = dTE2.Solution.Projects.Item(1).ProjectItems.AddFolder("Services");
-            //folder.ProjectItems.AddFromTemplate(System.IO.Path.Combine(folder.Properties.Item("FullPath").Value.ToString(), "User.cs"), "User.cs").FileCodeModel.AddClass("User", -1, null, null, vsCMAccess.vsCMAccessPublic); 
-            //ProjectItem projectItem = _dte.Solution.FindProjectItem("User.cs");
-
-            //var codeClass = projectItem.FileCodeModel.AddInterface("User", vsCMAccess.vsCMAccessPublic);
-
-            //codeClass.AddFunction("ToString", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefString, -1, vsCMAccess.vsCMAccessPublic, null);
-            //codeClass.AddImport();
         }
 
+        private void SelectionChanged(GeneratorWindow wpfWindowControl, ProjectItems mainItems)
+        {
+            var modelName = ((ComboBoxItem)wpfWindowControl.ModelsComboBox.SelectedItem).Content.ToString();
+            var dbContextName = ((ComboBoxItem)wpfWindowControl.DbContextComboBox.SelectedItem).Content.ToString();
+
+            if (modelName == null || modelName.Equals(string.Empty) || dbContextName == null || dbContextName.Equals(string.Empty))
+            {
+                wpfWindowControl.DatabaseSet.Content = "Database Set: -";
+                wpfWindowControl.GenerateButton.IsEnabled = false;
+                return;
+            }
+            string[] dbContextSplittedPath = dbContextName.Split('.');
+            var dbContextFile = FindDbContextFile(mainItems, dbContextSplittedPath[dbContextSplittedPath.Length - 2], dbContextSplittedPath[dbContextSplittedPath.Length - 1]);
+            var dbSetName = GetDbsetName(dbContextFile, modelName);
+
+            if (dbSetName == null)
+            {
+                wpfWindowControl.DatabaseSet.Content = "Database Set: -";
+                wpfWindowControl.GenerateButton.IsEnabled = false;
+                return;
+            }
+
+            wpfWindowControl.DatabaseSet.Content = $"Database Set: {dbSetName}";
+            wpfWindowControl.GenerateButton.IsEnabled = true;
+        }
 
         private System.Windows.Window CreateGeneratorWindow()
         {
             System.Windows.Window window = new System.Windows.Window
             {
                 Width = 400,
-                Height = 500,
+                Height = 300,
                 Title = "Repository and Service Generator",
-                WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen
+                WindowStartupLocation = System.Windows.WindowStartupLocation.CenterScreen,
+                ResizeMode = System.Windows.ResizeMode.NoResize
             };
             return window;
         }
@@ -183,7 +189,7 @@ namespace RepoServiceGenerator
             }
         }
 
-        private void CreateInterface(string fileName, string folderName, string modelName)
+        private void CreateInterface(string fileName, string folderName, string modelName, GeneratorWindow generatorWindow)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
@@ -206,28 +212,43 @@ namespace RepoServiceGenerator
             AddUsings(newInterfaceFile.FileCodeModel.CodeElements.Item(1).StartPoint, new string[] { "System", $"{GetSolutionName()}.Models", "System.Collections.Generic" });
 
             CodeInterface newInterface = actualNamespace.AddInterface($"I{modelName}{fileName}", -1, null, vsCMAccess.vsCMAccessPublic);
-            
-            //Create
-            CodeFunction createFunction = newInterface.AddFunction($"Create{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
-            createFunction.AddParameter(modelParametrName, modelName, -1);
 
-            //Get by Id
-            CodeFunction getByIdFunction = newInterface.AddFunction($"Get{modelName}ById", vsCMFunction.vsCMFunctionFunction, modelName, -1, vsCMAccess.vsCMAccessPublic);
-            getByIdFunction.AddParameter(idParameterName, "Guid", -1);
+            if (generatorWindow.CreateCheck.IsChecked == true)
+            {
+                //Create
+                CodeFunction createFunction = newInterface.AddFunction($"Create{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+                createFunction.AddParameter(modelParametrName, modelName, -1);
+            }
 
-            //Get all
-            CodeFunction getAllFunction = newInterface.AddFunction($"GetAll", vsCMFunction.vsCMFunctionFunction, $"IEnumerable<{modelName}>", -1, vsCMAccess.vsCMAccessPublic);
+            if (generatorWindow.GetByIdCheck.IsChecked == true)
+            {
+                //Get by Id
+                CodeFunction getByIdFunction = newInterface.AddFunction($"Get{modelName}ById", vsCMFunction.vsCMFunctionFunction, modelName, -1, vsCMAccess.vsCMAccessPublic);
+                getByIdFunction.AddParameter(idParameterName, "Guid", -1);
+            }
 
-            //Update
-            CodeFunction updateFunction = newInterface.AddFunction($"Update{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
-            updateFunction.AddParameter(modelParametrName, modelName, -1);
+            if (generatorWindow.GetAllCheck.IsChecked == true)
+            {
+                //Get all
+                CodeFunction getAllFunction = newInterface.AddFunction($"GetAll", vsCMFunction.vsCMFunctionFunction, $"IEnumerable<{modelName}>", -1, vsCMAccess.vsCMAccessPublic);
+            }
 
-            //Delete
-            CodeFunction deleteFunction = newInterface.AddFunction($"Delete{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
-            deleteFunction.AddParameter(idParameterName, "Guid", -1);
+            if (generatorWindow.UpdateCheck.IsChecked == true)
+            {
+                //Update
+                CodeFunction updateFunction = newInterface.AddFunction($"Update{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+                updateFunction.AddParameter(modelParametrName, modelName, -1);
+            }
+
+            if (generatorWindow.DeleteCheck.IsChecked == true)
+            {
+                //Delete
+                CodeFunction deleteFunction = newInterface.AddFunction($"Delete{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+                deleteFunction.AddParameter(idParameterName, "Guid", -1);
+            }
         }
 
-        private void CreateRepositoryClass(string fileName, string folderName, string modelFullName, string dbContextFullName, string dbSetName)
+        private void CreateRepositoryClass(string fileName, string folderName, string modelFullName, string dbContextFullName, string dbSetName, GeneratorWindow generatorWindow)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
@@ -275,37 +296,52 @@ namespace RepoServiceGenerator
             constructor.AddParameter("context", dbContextName, -1);
             AddCodeToFunction(constructor, "\t\t\t_context = context;\n");
 
-            //Create
-            CodeFunction createFunction = newClass.AddFunction($"Create{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
-            createFunction.AddParameter(modelParametrName, modelName, -1);
-            string code = $"\t\t\t_context.{dbSetName}.Add({modelParametrName});\n\t\t\t_context.SaveChanges();";
-            AddCodeToFunction(createFunction, code);
+            if (generatorWindow.CreateCheck.IsChecked == true)
+            {
+                //Create
+                CodeFunction createFunction = newClass.AddFunction($"Create{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+                createFunction.AddParameter(modelParametrName, modelName, -1);
+                string code = $"\t\t\t_context.{dbSetName}.Add({modelParametrName});\n\t\t\t_context.SaveChanges();";
+                AddCodeToFunction(createFunction, code);
+            }
 
-            //Get by id
-            CodeFunction getByIdFunction = newClass.AddFunction($"Get{modelName}ById", vsCMFunction.vsCMFunctionFunction, modelName, -1, vsCMAccess.vsCMAccessPublic);
-            getByIdFunction.AddParameter(idParameterName, "Guid", -1);
-            code = $"\t\t\treturn _context.{dbSetName}.Where(x => x.Id == {idParameterName}).FirstOrDefault();";
-            AddCodeToFunction(getByIdFunction, code);
+            if (generatorWindow.GetByIdCheck.IsChecked == true)
+            {
+                //Get by id
+                CodeFunction getByIdFunction = newClass.AddFunction($"Get{modelName}ById", vsCMFunction.vsCMFunctionFunction, modelName, -1, vsCMAccess.vsCMAccessPublic);
+                getByIdFunction.AddParameter(idParameterName, "Guid", -1);
+                string code = $"\t\t\treturn _context.{dbSetName}.Where(x => x.Id == {idParameterName}).FirstOrDefault();";
+                AddCodeToFunction(getByIdFunction, code);
+            }
 
-            //Get all
-            CodeFunction getAllFunction = newClass.AddFunction($"GetAll", vsCMFunction.vsCMFunctionFunction, $"IEnumerable<{modelName}>", -1, vsCMAccess.vsCMAccessPublic);
-            code = $"\t\t\treturn _context.{dbSetName}.Where(_ => true);";
-            AddCodeToFunction(getAllFunction, code);
+            if (generatorWindow.GetAllCheck.IsChecked == true)
+            {
+                //Get all
+                CodeFunction getAllFunction = newClass.AddFunction($"GetAll", vsCMFunction.vsCMFunctionFunction, $"IEnumerable<{modelName}>", -1, vsCMAccess.vsCMAccessPublic);
+                string code = $"\t\t\treturn _context.{dbSetName}.Where(_ => true);";
+                AddCodeToFunction(getAllFunction, code);
+            }
 
-            //Update
-            CodeFunction updateFunction = newClass.AddFunction($"Update{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
-            updateFunction.AddParameter(modelParametrName, modelName, -1);
-            code = $"\t\t\t_context.{dbSetName}.Update({modelParametrName});\n\t\t\t_context.SaveChanges();";
-            AddCodeToFunction(updateFunction, code);
+            if (generatorWindow.UpdateCheck.IsChecked == true)
+            {
+                //Update
+                CodeFunction updateFunction = newClass.AddFunction($"Update{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+                updateFunction.AddParameter(modelParametrName, modelName, -1);
+                string code = $"\t\t\t_context.{dbSetName}.Update({modelParametrName});\n\t\t\t_context.SaveChanges();";
+                AddCodeToFunction(updateFunction, code);
+            }
 
-            //Delete
-            CodeFunction deleteFunction = newClass.AddFunction($"Delete{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
-            deleteFunction.AddParameter(idParameterName, "Guid", -1);
-            code = $"\t\t\tvar {modelParametrName} = Get{modelName}ById({idParameterName});\n\t\t\t_context.{dbSetName}.Remove({modelParametrName});\n\t\t\t_context.SaveChanges();";
-            AddCodeToFunction(deleteFunction, code);
+            if (generatorWindow.DeleteCheck.IsChecked == true)
+            {
+                //Delete
+                CodeFunction deleteFunction = newClass.AddFunction($"Delete{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+                deleteFunction.AddParameter(idParameterName, "Guid", -1);
+                string code = $"\t\t\tvar {modelParametrName} = Get{modelName}ById({idParameterName});\n\t\t\t_context.{dbSetName}.Remove({modelParametrName});\n\t\t\t_context.SaveChanges();";
+                AddCodeToFunction(deleteFunction, code);
+            }
         }
 
-        private void CreateServiceClass(string fileName, string folderName, string modelFullName, string dbContextFullName, string dbSetName)
+        private void CreateServiceClass(string fileName, string folderName, string modelFullName, string dbContextFullName, string dbSetName, GeneratorWindow generatorWindow)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
@@ -350,39 +386,55 @@ namespace RepoServiceGenerator
             epRepo.CharRight(7);
             epRepo.Insert(" readonly ");
 
+
             //Constructor
             CodeFunction constructor = newClass.AddFunction($"{modelName}{fileName}", vsCMFunction.vsCMFunctionConstructor, null, -1, vsCMAccess.vsCMAccessPublic);
             constructor.AddParameter($"{modelParametrName}Repository", $"I{modelName}Repository", -1);
             AddCodeToFunction(constructor, $"\t\t\t_{modelParametrName}Repository = {modelParametrName}Repository;\n");
 
-            //Create
-            CodeFunction createFunction = newClass.AddFunction($"Create{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
-            createFunction.AddParameter(modelParametrName, modelName, -1);
-            string code = $"\t\t\t_{modelParametrName}Repository.Create{modelName}({modelParametrName});";
-            AddCodeToFunction(createFunction, code);
+            if (generatorWindow.CreateCheck.IsChecked == true)
+            {
+                //Create
+                CodeFunction createFunction = newClass.AddFunction($"Create{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+                createFunction.AddParameter(modelParametrName, modelName, -1);
+                string code = $"\t\t\t_{modelParametrName}Repository.Create{modelName}({modelParametrName});";
+                AddCodeToFunction(createFunction, code);
+            }
 
-            //Get by id
-            CodeFunction getByIdFunction = newClass.AddFunction($"Get{modelName}ById", vsCMFunction.vsCMFunctionFunction, modelName, -1, vsCMAccess.vsCMAccessPublic);
-            getByIdFunction.AddParameter(idParameterName, "Guid", -1);
-            code = $"\t\t\treturn _{modelParametrName}Repository.Get{modelName}ById({idParameterName});";
-            AddCodeToFunction(getByIdFunction, code);
+            if (generatorWindow.GetByIdCheck.IsChecked == true)
+            {
+                //Get by id
+                CodeFunction getByIdFunction = newClass.AddFunction($"Get{modelName}ById", vsCMFunction.vsCMFunctionFunction, modelName, -1, vsCMAccess.vsCMAccessPublic);
+                getByIdFunction.AddParameter(idParameterName, "Guid", -1);
+                string code = $"\t\t\treturn _{modelParametrName}Repository.Get{modelName}ById({idParameterName});";
+                AddCodeToFunction(getByIdFunction, code);
+            }
 
-            //Get all
-            CodeFunction getAllFunction = newClass.AddFunction($"GetAll", vsCMFunction.vsCMFunctionFunction, $"IEnumerable<{modelName}>", -1, vsCMAccess.vsCMAccessPublic);
-            code = $"\t\t\treturn _{modelParametrName}Repository.GetAll();";
-            AddCodeToFunction(getAllFunction, code);
+            if (generatorWindow.GetAllCheck.IsChecked == true)
+            {
+                //Get all
+                CodeFunction getAllFunction = newClass.AddFunction($"GetAll", vsCMFunction.vsCMFunctionFunction, $"IEnumerable<{modelName}>", -1, vsCMAccess.vsCMAccessPublic);
+                string code = $"\t\t\treturn _{modelParametrName}Repository.GetAll();";
+                AddCodeToFunction(getAllFunction, code);
+            }
 
-            //Update
-            CodeFunction updateFunction = newClass.AddFunction($"Update{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
-            updateFunction.AddParameter(modelParametrName, modelName, -1);
-            code = $"\t\t\t_{modelParametrName}Repository.Update{modelName}({modelParametrName});";
-            AddCodeToFunction(updateFunction, code);
+            if (generatorWindow.UpdateCheck.IsChecked == true)
+            {
+                //Update
+                CodeFunction updateFunction = newClass.AddFunction($"Update{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+                updateFunction.AddParameter(modelParametrName, modelName, -1);
+                string code = $"\t\t\t_{modelParametrName}Repository.Update{modelName}({modelParametrName});";
+                AddCodeToFunction(updateFunction, code);
+            }
 
-            //Delete
-            CodeFunction deleteFunction = newClass.AddFunction($"Delete{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
-            deleteFunction.AddParameter(idParameterName, "Guid", -1);
-            code = $"\t\t\t_{modelParametrName}Repository.Delete{modelName}({idParameterName});";
-            AddCodeToFunction(deleteFunction, code);
+            if (generatorWindow.DeleteCheck.IsChecked == true)
+            {
+                //Delete
+                CodeFunction deleteFunction = newClass.AddFunction($"Delete{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+                deleteFunction.AddParameter(idParameterName, "Guid", -1);
+                string code = $"\t\t\t_{modelParametrName}Repository.Delete{modelName}({idParameterName});";
+                AddCodeToFunction(deleteFunction, code);
+            }
         }
 
         private void AddCodeToFunction(CodeFunction function, string code)

@@ -21,8 +21,6 @@ namespace RepoServiceGenerator
     public partial class GeneratorWindow : UserControl
     {
 
-        public string ModelClass { get; set; }
-
         private Window Window;
 
         public GeneratorWindow(Window window)
@@ -33,7 +31,6 @@ namespace RepoServiceGenerator
 
         private void Button_Click(object sender, RoutedEventArgs e)
         {
-            ModelClass = ModelsComboBox.Text;
             Window.DialogResult = true;
             Window.Close();
         }
@@ -48,6 +45,10 @@ namespace RepoServiceGenerator
                 });
             }
             ModelsComboBox.SelectedIndex = 0;
+            if (Models.Count == 0)
+            {
+                GenerateButton.IsEnabled = false;
+            }
         }
 
         public void InitializeDbContextComboBoxWithItems(List<string> DbContextClassNames)
@@ -59,8 +60,11 @@ namespace RepoServiceGenerator
                     Content = dbContextClassName
                 });
             }
-            DbContextComboBox.SelectedIndex = 0;
 
+            if(DbContextClassNames.Count == 0)
+            {
+                GenerateButton.IsEnabled = false;
+            }
         }
     }
 }
