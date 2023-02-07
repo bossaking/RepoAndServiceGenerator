@@ -97,30 +97,45 @@ namespace RepoServiceGenerator
         {
             ThreadHelper.ThrowIfNotOnUIThread();
 
-            //ProjectItems mainItems = _dte.Solution.Projects.Item(1).ProjectItems;
+            ProjectItems mainItems = _dte.Solution.Projects.Item(1).ProjectItems;
 
-            //var dbContextClases = FindDbContex(mainItems, new string[] { "User" });
-            //var modelsFolder = FindModelsFolder(mainItems, "Models");
-            //var models = GetModelsNamesFromFolder(modelsFolder);
+            var dbContextClases = FindDbContexNames(mainItems, new string[] { "DbContext", "IdentityDbContext" });
+            var modelsFolder = FindModelsFolder(mainItems, "Models");
+            var models = GetModelsNamesFromFolder(modelsFolder);
 
-            //System.Windows.Window window = CreateGeneratorWindow();
+            System.Windows.Window window = CreateGeneratorWindow();
 
-            //var wpfWindowControl = new GeneratorWindow(window);
-            //wpfWindowControl.InitializeDbContextComboBoxWithItems(dbContextClases);
-            //wpfWindowControl.InitializeModelsComboBoxWithItems(models);
+            var wpfWindowControl = new GeneratorWindow(window);
+            wpfWindowControl.InitializeDbContextComboBoxWithItems(dbContextClases);
+            wpfWindowControl.InitializeModelsComboBoxWithItems(models);
 
-            //window.Content = wpfWindowControl;
-            //var result = window.ShowDialog();
-            //if (result == true)
-            //{
-            CreateFolder("Services");
-            CreateFolder("Repositories");
-            
-            CreateInterface("Service", "Services", "User");
-            CreateInterface("Repository", "Repositories", "User");
+            window.Content = wpfWindowControl;
+            var result = window.ShowDialog();
+            if (result == true)
+            {
+                string modelFullName = wpfWindowControl.ModelsComboBox.Text;
+
+                string dbContextFullPath = wpfWindowControl.DbContextComboBox.Text;
+                string[] dbContextSplittedPath = dbContextFullPath.Split('.');
+                var dbContextFile = FindDbContextFile(mainItems, dbContextSplittedPath[dbContextSplittedPath.Length - 2], dbContextSplittedPath[dbContextSplittedPath.Length - 1]);
+
+                var dbSetName = GetDbsetName(dbContextFile, modelFullName);
+
+                CreateFolder("Services");
+                CreateFolder("Repositories");
+
+                string modelName = modelFullName.Split('.')[modelFullName.Split('.').Length - 1];
+
+                CreateInterface("Service", "Services", modelName);
+                CreateInterface("Repository", "Repositories", modelName);
+
+                CreateRepositoryClass("Repository", "Repositories", modelFullName, dbContextFullPath, dbSetName);
+                CreateServiceClass("Service", "Services", modelFullName, dbContextFullPath, dbSetName);
+            }
+
 
             //CreateClass("Service", "Services", "ConsoleApp3.Models.User", "ConsoleApp3.DAL.AppDbContext");
-            CreateRepositoryClass("Repository", "Repositories", "ConsoleApp3.Models.User", "ConsoleApp3.DAL.AppDbContext", "Users");
+            //CreateRepositoryClass("Repository", "Repositories", "ConsoleApp3.Models.User", "ConsoleApp3.DAL.AppDbContext", "Users");
             //var text = wpfWindowControl.ModelClass;
             //VsShellUtilities.ShowMessageBox(
             //    this.package,
@@ -239,12 +254,12 @@ namespace RepoServiceGenerator
             if (dbContextFolderName.Equals(modelFolderName))
             {
                 AddUsings(newClassFile.FileCodeModel.CodeElements.Item(1).StartPoint, new string[] { "System", modelFolderName, $"{GetSolutionName()}.{folderName}.Interfaces",
-                    "System.Collections.Generic" });
+                    "System.Collections.Generic", "System.Linq" });
             }
             else
             {
                 AddUsings(newClassFile.FileCodeModel.CodeElements.Item(1).StartPoint, new string[] { "System", modelFolderName, dbContextFolderName, 
-                    $"{GetSolutionName()}.{folderName}.Interfaces", "System.Collections.Generic" });
+                    $"{GetSolutionName()}.{folderName}.Interfaces", "System.Collections.Generic", "System.Linq" });
             }
 
             CodeClass newClass = actualNamespace.AddClass($"{modelName}{fileName}", -1, null, $"I{modelName}{fileName}", vsCMAccess.vsCMAccessPublic);
@@ -290,6 +305,85 @@ namespace RepoServiceGenerator
             AddCodeToFunction(deleteFunction, code);
         }
 
+        private void CreateServiceClass(string fileName, string folderName, string modelFullName, string dbContextFullName, string dbSetName)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            string modelName = modelFullName.Split('.')[modelFullName.Split('.').Length - 1];
+            string modelFolderName = System.IO.Path.GetFileNameWithoutExtension(modelFullName);
+            string modelParametrName = char.ToLower(modelName[0]) + modelName.Substring(1);
+            string idParameterName = $"{modelParametrName}Id";
+
+
+            string dbContextName = dbContextFullName.Split('.')[dbContextFullName.Split('.').Length - 1];
+            string dbContextFolderName = System.IO.Path.GetFileNameWithoutExtension(dbContextFullName);
+
+            ProjectItem folder = _dte.Solution.Projects.Item(1).ProjectItems.Item(folderName);
+            if (folder.ProjectItems.Item($"{modelName}{fileName}.cs") != null)
+            {
+                return;
+            }
+
+            ProjectItem newClassFile = folder.ProjectItems.AddFromTemplate(System.IO.Path.Combine(folder.Properties.Item("FullPath").Value.ToString(), $"{modelName}{fileName}.cs"),
+                $"{modelName}{fileName}.cs");
+
+            CodeNamespace actualNamespace = newClassFile.FileCodeModel.AddNamespace($"{GetSolutionName()}.{folderName}", -1);
+
+
+            if (dbContextFolderName.Equals(modelFolderName))
+            {
+                AddUsings(newClassFile.FileCodeModel.CodeElements.Item(1).StartPoint, new string[] { "System", modelFolderName, $"{GetSolutionName()}.{folderName}.Interfaces",
+                    $"{GetSolutionName()}.Repositories.Interfaces", "System.Collections.Generic", "System.Linq" });
+            }
+            else
+            {
+                AddUsings(newClassFile.FileCodeModel.CodeElements.Item(1).StartPoint, new string[] { "System", modelFolderName, dbContextFolderName,
+                    $"{GetSolutionName()}.{folderName}.Interfaces", $"{GetSolutionName()}.Repositories.Interfaces", "System.Collections.Generic", "System.Linq" });
+            }
+
+
+            CodeClass newClass = actualNamespace.AddClass($"{modelName}{fileName}", -1, null, $"I{modelName}{fileName}", vsCMAccess.vsCMAccessPublic);
+
+            //Repository property
+            CodeVariable repository = newClass.AddVariable($"_{modelParametrName}Repository", $"I{modelName}Repository", -1, vsCMAccess.vsCMAccessPrivate, null);
+            EditPoint epRepo = repository.StartPoint.CreateEditPoint();
+            epRepo.CharRight(7);
+            epRepo.Insert(" readonly ");
+
+            //Constructor
+            CodeFunction constructor = newClass.AddFunction($"{modelName}{fileName}", vsCMFunction.vsCMFunctionConstructor, null, -1, vsCMAccess.vsCMAccessPublic);
+            constructor.AddParameter($"{modelParametrName}Repository", $"I{modelName}Repository", -1);
+            AddCodeToFunction(constructor, $"\t\t\t_{modelParametrName}Repository = {modelParametrName}Repository;\n");
+
+            //Create
+            CodeFunction createFunction = newClass.AddFunction($"Create{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+            createFunction.AddParameter(modelParametrName, modelName, -1);
+            string code = $"\t\t\t_{modelParametrName}Repository.Create{modelName}({modelParametrName});";
+            AddCodeToFunction(createFunction, code);
+
+            //Get by id
+            CodeFunction getByIdFunction = newClass.AddFunction($"Get{modelName}ById", vsCMFunction.vsCMFunctionFunction, modelName, -1, vsCMAccess.vsCMAccessPublic);
+            getByIdFunction.AddParameter(idParameterName, "Guid", -1);
+            code = $"\t\t\treturn _{modelParametrName}Repository.Get{modelName}ById({idParameterName});";
+            AddCodeToFunction(getByIdFunction, code);
+
+            //Get all
+            CodeFunction getAllFunction = newClass.AddFunction($"GetAll", vsCMFunction.vsCMFunctionFunction, $"IEnumerable<{modelName}>", -1, vsCMAccess.vsCMAccessPublic);
+            code = $"\t\t\treturn _{modelParametrName}Repository.GetAll();";
+            AddCodeToFunction(getAllFunction, code);
+
+            //Update
+            CodeFunction updateFunction = newClass.AddFunction($"Update{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+            updateFunction.AddParameter(modelParametrName, modelName, -1);
+            code = $"\t\t\t_{modelParametrName}Repository.Update{modelName}({modelParametrName});";
+            AddCodeToFunction(updateFunction, code);
+
+            //Delete
+            CodeFunction deleteFunction = newClass.AddFunction($"Delete{modelName}", vsCMFunction.vsCMFunctionFunction, vsCMTypeRef.vsCMTypeRefVoid, -1, vsCMAccess.vsCMAccessPublic);
+            deleteFunction.AddParameter(idParameterName, "Guid", -1);
+            code = $"\t\t\t_{modelParametrName}Repository.Delete{modelName}({idParameterName});";
+            AddCodeToFunction(deleteFunction, code);
+        }
 
         private void AddCodeToFunction(CodeFunction function, string code)
         {
@@ -358,6 +452,28 @@ namespace RepoServiceGenerator
             return dbContexts;
         }
 
+        private ProjectItem FindDbContextFile(ProjectItems items, string folderName, string dbContextName)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+
+            foreach (ProjectItem item in items)
+            {
+                if (item.Name.ToLower().Equals(folderName.ToLower()))
+                {
+                    return item.ProjectItems.Item($"{dbContextName}.cs");
+                }
+                else
+                {
+                    ProjectItem projectItem = FindDbContextFile(item.ProjectItems, folderName, dbContextName);
+                    if (projectItem != null)
+                    {
+                        return projectItem.ProjectItems.Item($"{dbContextName}.cs");
+                    }
+                }
+            }
+            return null;
+        }
+
         private ProjectItem FindModelsFolder(ProjectItems items, string folderName)
         {
             ThreadHelper.ThrowIfNotOnUIThread();
@@ -386,9 +502,9 @@ namespace RepoServiceGenerator
 
             List<string> models = new List<string>();
 
-            foreach(ProjectItem item in modelsFolder.ProjectItems)
+            foreach (ProjectItem item in modelsFolder.ProjectItems)
             {
-                if(item.FileCodeModel != null)
+                if (item.FileCodeModel != null)
                 {
                     foreach (CodeElement codeElement in item.FileCodeModel.CodeElements)
                     {
@@ -407,6 +523,40 @@ namespace RepoServiceGenerator
             }
 
             return models;
+        }
+
+        private string GetDbsetName(ProjectItem dbContextFile, string modelName)
+        {
+            ThreadHelper.ThrowIfNotOnUIThread();
+            foreach (CodeElement codeElem in dbContextFile.FileCodeModel.CodeElements)
+            {
+                if (codeElem.Kind == vsCMElement.vsCMElementNamespace)
+                {
+                    foreach (CodeElement namespaceElem in ((CodeNamespace)codeElem).Members)
+                    {
+                        if (namespaceElem.Kind == vsCMElement.vsCMElementClass)
+                        {
+                            foreach (CodeElement classElem in ((CodeClass)namespaceElem).Members)
+                            {
+                                string typeName = null;
+                                if (classElem.Kind == vsCMElement.vsCMElementProperty)
+                                {
+                                    typeName = ((CodeProperty)classElem).Type.AsFullName;
+                                }
+                                else if (classElem.Kind == vsCMElement.vsCMElementVariable)
+                                {
+                                    typeName = ((CodeVariable)classElem).Type.AsFullName;
+                                }
+                                if (typeName != null && typeName.Contains($"DbSet<{modelName}>"))
+                                {
+                                    return classElem.Name;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return null;
         }
     }
 }
